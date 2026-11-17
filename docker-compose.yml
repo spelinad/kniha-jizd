@@ -1,0 +1,13 @@
+services:
+  kniha-jizd:
+    build: .
+    container_name: kniha-jizd
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+    volumes:
+      - ./data:/app/data
+      - ./Vstupy:/app/Vstupy
+      - ./Vystupy:/app/Vystupy

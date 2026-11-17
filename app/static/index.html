@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kniha jízd 2026 — Příprava výkazu</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-left">
+      <div class="brand">
+        <span class="brand-icon">🚗</span>
+        <div>
+          <h1>Kniha jízd 2026</h1>
+          <div class="brand-sub" id="vehicle-badge">Načítání profilu...</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="topbar-actions">
+      <label class="btn btn-secondary file-btn" title="Nahrát export ze Škoda aplikace (tripStatistics_*.csv)">
+        📥 Nahrát Škoda CSV
+        <input type="file" id="csv-upload-input" accept=".csv" hidden />
+      </label>
+      <button type="button" class="btn btn-secondary" id="btn-open-settings">⚙️ Nastavení &amp; Katalogy</button>
+      <button type="button" class="btn btn-primary" id="btn-export-excel">📊 Exportovat Excel</button>
+    </div>
+  </header>
+
+  <nav class="month-bar" id="month-bar" aria-label="Výběr měsíce"></nav>
+
+  <main class="container">
+    <!-- Toast / Alert area -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- KPI strip -->
+    <section class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-label">Tachometr v měsíci</div>
+        <div class="kpi-value" id="kpi-odo">—</div>
+        <div class="kpi-meta" id="kpi-odo-meta">—</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Služební kilometry</div>
+        <div class="kpi-value" id="kpi-biz">0 km</div>
+        <div class="kpi-meta" id="kpi-biz-meta">Město 0 · Ostatní 0</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Soukromé kilometry</div>
+        <div class="kpi-value" id="kpi-priv">0 km</div>
+        <div class="kpi-meta" id="kpi-priv-meta">Podíl služebních: 0 %</div>
+      </div>
+      <div class="kpi-card kpi-highlight">
+        <div class="kpi-label">K proplacení (PSA)</div>
+        <div class="kpi-value" id="kpi-psa">0,00 Kč</div>
+        <div class="kpi-meta" id="kpi-psa-meta">FUEL 0 Kč · EXP 0 Kč</div>
+      </div>
+    </section>
+
+    <!-- Section 1: Business trip entry -->
+    <section class="card">
+      <div class="card-header">
+        <div>
+          <h2>1. Zadání služební cesty</h2>
+          <p class="card-desc">Vyberte den (u dnů v CSV vidíte ujeté km), zvolte typickou cestu nebo spočítejte novou trasu Odkud → Kam.</p>
+        </div>
+        <div class="segmented" id="biz-mode-switch">
+          <button type="button" class="seg-btn active" data-mode="catalog">📋 Ze seznamu typických cest</button>
+          <button type="button" class="seg-btn" data-mode="route">🗺️ Výpočet Odkud → Kam</button>
+        </div>
+      </div>
+
+      <div class="biz-form">
+        <div class="form-row">
+          <div class="field field-date">
+            <label for="biz-date">Datum cesty</label>
+            <select id="biz-date"></select>
+          </div>
+
+          <div class="field field-grow" id="biz-catalog-wrap">
+            <label for="biz-template">Typická služební cesta</label>
+            <select id="biz-template">
+              <option value="">— Vyberte šablonu nebo vyplňte níže —</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Route calculator panel -->
+        <div id="biz-route-wrap" class="route-box hidden">
+          <div class="form-row">
+            <div class="field field-grow">
+              <label for="route-origin">Odkud</label>
+              <input type="text" id="route-origin" placeholder="např. Praha 5 nebo Středokluky" />
+            </div>
+            <div class="field field-grow">
+              <label for="route-waypoints">Přes (volitelné, odděleno čárkou)</label>
+              <input type="text" id="route-waypoints" placeholder="např. Praha 4, Praha 10" />
+            </div>
+            <div class="field field-grow">
+              <label for="route-dest">Kam</label>
+              <input type="text" id="route-dest" placeholder="např. Mladá Boleslav" />
+            </div>
+            <div class="field field-check">
+              <label class="checkbox-inline">
+                <input type="checkbox" id="route-roundtrip" checked />
+                Zpáteční cesta (×2)
+              </label>
+            </div>
+            <div class="field field-btn">
+              <button type="button" class="btn btn-secondary" id="btn-calc-route">🗺️ Spočítat km</button>
+            </div>
+          </div>
+          <div id="route-result-note" class="route-note hidden"></div>
+        </div>
+
+        <div class="form-row">
+          <div class="field field-grow-2">
+            <label for="biz-dest-text">Cíl cesty (Sloupec B)</label>
+            <input type="text" id="biz-dest-text" placeholder="např. Praha 5 - Praha 4 - Praha 10" />
+          </div>
+          <div class="field field-num">
+            <label for="biz-km-city">Město (km)</label>
+            <input type="number" id="biz-km-city" min="0" value="0" />
+          </div>
+          <div class="field field-num">
+            <label for="biz-km-other">Ostatní (km)</label>
+            <input type="number" id="biz-km-other" min="0" value="0" />
+          </div>
+          <div class="field field-grow">
+            <label for="biz-reason">Důvod cesty (Sl. G)</label>
+            <input type="text" id="biz-reason" placeholder="např. jednání PRE" />
+          </div>
+          <div class="field field-proj">
+            <label for="biz-project">Projekt (Sl. H)</label>
+            <input type="text" id="biz-project" placeholder="kód projektu" />
+          </div>
+        </div>
+
+        <div class="form-footer">
+          <div class="form-checks">
+            <label class="checkbox-inline">
+              <input type="checkbox" id="biz-append-commute" checked />
+              Pokud v daný den zbydou km ze Škoda CSV, připsat „, soukr. Středokluky“
+            </label>
+            <label class="checkbox-inline hidden" id="save-route-catalog-wrap">
+              <input type="checkbox" id="biz-save-to-catalog" />
+              Uložit jako novou typickou služební cestu
+            </label>
+          </div>
+          <button type="button" class="btn btn-primary" id="btn-add-biz">+ Zapsat služební cestu do dne</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 2: Daily log table -->
+    <section class="card">
+      <div class="card-header">
+        <div>
+          <h2>2. Měsíční přehled jízd (<span id="month-title-label">2026-09</span>)</h2>
+          <p class="card-desc">Denní nájezdy se počítají podle posunu tachometru ze Škoda CSV. Neobvyklé jízdy doplníte kliknutím na štítek.</p>
+        </div>
+        <div class="toolbar-right">
+          <div class="segmented" id="day-filter-switch">
+            <button type="button" class="seg-btn active" data-filter="all">Všechny dny (<span id="cnt-all">0</span>)</button>
+            <button type="button" class="seg-btn" data-filter="active">Jen s jízdou (<span id="cnt-active">0</span>)</button>
+            <button type="button" class="seg-btn" data-filter="attention">🟡🔴 K doplnění (<span id="cnt-attention">0</span>)</button>
+          </div>
+          <button type="button" class="btn btn-secondary" id="btn-reestimate" title="Přepočítá odhady u neuzamčených dnů podle Škoda CSV">✨ Přepočítat odhady</button>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table class="trips-table">
+          <thead>
+            <tr>
+              <th style="width: 105px;">Datum</th>
+              <th style="width: 165px;">Škoda CSV</th>
+              <th>Cíl cesty (Sloupec B)</th>
+              <th style="width: 78px;">Město</th>
+              <th style="width: 78px;">Ostatní</th>
+              <th style="width: 78px;">Soukr.</th>
+              <th style="width: 72px;">Celkem</th>
+              <th style="width: 145px;">Důvod (G)</th>
+              <th style="width: 135px;">Projekt (H)</th>
+              <th style="width: 140px;">Stav / Akce</th>
+            </tr>
+          </thead>
+          <tbody id="days-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Section 3: Receipts & Other expenses -->
+    <section class="card">
+      <div class="card-header">
+        <div>
+          <h2>3. Účtenky za PHM a ostatní výdaje (Gemini AI OCR + Ruční doplnění)</h2>
+          <p class="card-desc">Nahrajte nebo vytěžte soubory ze složky Vstupy. V seznamu vidíte stav každého souboru – kdykoliv ho můžete otevřít a údaje doplnit ručně.</p>
+        </div>
+        <div class="toolbar-right">
+          <button type="button" class="btn btn-primary hidden" id="btn-process-all-inputs">🤖 Vytěžit nezpracované (<span id="unprocessed-count">0</span>)</button>
+        </div>
+      </div>
+
+      <div id="gemini-key-warning" class="alert alert-warning hidden">
+        <span>⚠️ Pro automatické čtení PDF/obrázkových účtenek nastavte svůj <strong>Google Gemini API klíč</strong> (ruční zadání funguje i bez klíče).</span>
+        <button type="button" class="btn btn-sm btn-secondary" id="btn-open-settings-from-banner">🔑 Nastavit API klíč</button>
+      </div>
+
+      <div id="receipt-dropzone" class="dropzone dropzone-compact">
+        <div class="dropzone-icon">🧾</div>
+        <div>
+          <div class="dropzone-title">Přetáhněte sem nové účtenky (PDF, JPG, PNG) nebo klikněte pro výběr</div>
+          <div class="dropzone-sub">Soubory se uloží do složky Vstupy, automaticky vytěží přes Gemini AI a přiřadí do příslušného měsíce</div>
+        </div>
+        <input type="file" id="receipt-file-input" accept=".pdf,.jpg,.jpeg,.png,.webp" multiple hidden />
+      </div>
+
+      <!-- Unified Receipt Files Registry -->
+      <div class="subcard" style="margin-bottom: 16px;">
+        <div class="subcard-header">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <h3>📂 Seznam souborů účtenek</h3>
+            <span class="badge badge-neutral" id="inputs-receipt-count">0</span>
+          </div>
+          <div class="segmented" id="receipt-filter-switch">
+            <button type="button" class="seg-btn active" data-rfilter="all">Všechny (<span id="rcnt-all">0</span>)</button>
+            <button type="button" class="seg-btn" data-rfilter="month">Tento měsíc (<span id="rcnt-month">0</span>)</button>
+            <button type="button" class="seg-btn" data-rfilter="pending">Nezpracované / Chyby (<span id="rcnt-pending">0</span>)</button>
+          </div>
+        </div>
+        <div class="table-wrap" style="max-height: 360px; overflow-y: auto;">
+          <table class="mini-table">
+            <thead>
+              <tr>
+                <th>Soubor</th>
+                <th style="width: 150px;">Datum / Měsíc</th>
+                <th style="width: 175px;">Stav</th>
+                <th>Rozpoznané / Zadané položky</th>
+                <th style="width: 220px;">Akce</th>
+              </tr>
+            </thead>
+            <tbody id="receipt-files-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Pending receipts from another month (legacy fallback) -->
+      <div id="pending-receipts-wrap" class="pending-wrap hidden"></div>
+
+      <div class="receipt-tables-grid">
+        <!-- Fuel receipts -->
+        <div class="subcard">
+          <div class="subcard-header">
+            <h3>⛽ Načerpané PHM (řádky 22–37 v Excelu)</h3>
+            <button type="button" class="btn btn-sm btn-secondary" id="btn-add-fuel-manual">+ Přidat řádek PHM</button>
+          </div>
+          <div class="table-wrap">
+            <table class="mini-table">
+              <thead>
+                <tr>
+                  <th>Datum</th>
+                  <th>Čerpací stanice / Popis</th>
+                  <th style="width: 82px;">Litrů</th>
+                  <th style="width: 72px;">Měna</th>
+                  <th style="width: 86px;">Cena/1 l</th>
+                  <th style="width: 76px;">Kurz ČNB</th>
+                  <th style="width: 96px;">Celkem CZK</th>
+                  <th style="width: 72px;">Akce</th>
+                </tr>
+              </thead>
+              <tbody id="fuel-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Other expenses -->
+        <div class="subcard">
+          <div class="subcard-header">
+            <h3>🧼 Ostatní výdaje: myčka, ostřikovače, AdBlue (ř. 46–59)</h3>
+            <button type="button" class="btn btn-sm btn-secondary" id="btn-add-other-manual">+ Přidat výdaj</button>
+          </div>
+          <div class="table-wrap">
+            <table class="mini-table">
+              <thead>
+                <tr>
+                  <th>Datum</th>
+                  <th>Popis výdaje (Sloupec B)</th>
+                  <th style="width: 90px;">Částka</th>
+                  <th style="width: 72px;">Měna</th>
+                  <th style="width: 76px;">Kurz</th>
+                  <th style="width: 110px;">Projekt (H)</th>
+                  <th style="width: 72px;">Akce</th>
+                </tr>
+              </thead>
+              <tbody id="other-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 4: PSA Summary & Export -->
+    <section class="card psa-card">
+      <div class="card-header">
+        <div>
+          <h2>4. Souhrn pro PSA Expense Report &amp; Export Knihy jízd</h2>
+          <p class="card-desc">Přesné hodnoty podle vzorců v šabloně Travel Book 2026.</p>
+        </div>
+        <button type="button" class="btn btn-primary btn-lg" id="btn-export-excel-bottom">💾 Uložit a stáhnout vyplněný Excel</button>
+      </div>
+
+      <div class="psa-grid">
+        <div class="psa-item">
+          <div class="psa-label">Použitá cena PHM / litr</div>
+          <div class="psa-val" id="psa-fuel-price">—</div>
+          <div class="psa-sub" id="psa-fuel-price-source">—</div>
+        </div>
+        <div class="psa-item">
+          <div class="psa-label">Spotřeba TP (Město / Komb.)</div>
+          <div class="psa-val" id="psa-consumption">—</div>
+          <div class="psa-sub">Odhad spotřeby v měsíci: <span id="psa-est-liters">0 l</span></div>
+        </div>
+        <div class="psa-item">
+          <div class="psa-label">Expense Type: <code>FUEL</code></div>
+          <div class="psa-val copyable" id="psa-fuel-amount" title="Kliknutím zkopírujete">0,00 Kč</div>
+          <div class="psa-sub">Náhrada za služební kilometry</div>
+        </div>
+        <div class="psa-item">
+          <div class="psa-label">Expense Type: <code>COMPANY CAR EXP.</code></div>
+          <div class="psa-val copyable" id="psa-other-amount" title="Kliknutím zkopírujete">0,00 Kč</div>
+          <div class="psa-sub">Podíl služebních km: <span id="psa-biz-share">0 %</span></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Settings Modal -->
+  <div id="settings-modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-backdrop" data-close-modal="settings-modal"></div>
+    <div class="modal-panel modal-lg">
+      <div class="modal-header">
+        <h2>⚙️ Nastavení profilu, Gemini API a katalogů</h2>
+        <button type="button" class="icon-btn" data-close-modal="settings-modal">✕</button>
+      </div>
+      <div class="modal-tabs">
+        <button type="button" class="tab-btn active" data-tab="tab-profile">🚗 Profil vozu &amp; Gemini API</button>
+        <button type="button" class="tab-btn" data-tab="tab-biz-routes">💼 Typické služební cesty</button>
+        <button type="button" class="tab-btn" data-tab="tab-priv-routes">🏠 Typické soukromé cesty</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Tab 1: Profile -->
+        <div id="tab-profile" class="tab-pane active">
+          <div class="settings-grid">
+            <div class="field">
+              <label for="cfg-license-plate">Registrační značka (RZ)</label>
+              <input type="text" id="cfg-license-plate" />
+            </div>
+            <div class="field">
+              <label for="cfg-vehicle-type">Typ vozidla</label>
+              <select id="cfg-vehicle-type">
+                <option value="Manažerský ">Manažerský</option>
+                <option value="Poolový vůz">Poolový vůz</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="cfg-fuel-type">Druh PHM</label>
+              <select id="cfg-fuel-type">
+                <option value="nafta">nafta</option>
+                <option value="natural">natural</option>
+                <option value="elektřina">elektřina</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="cfg-cons-city">Spotřeba město dle TP (l/100 km)</label>
+              <input type="number" step="0.1" id="cfg-cons-city" />
+            </div>
+            <div class="field">
+              <label for="cfg-cons-comb">Spotřeba kombinovaná dle TP (l/100 km)</label>
+              <input type="number" step="0.1" id="cfg-cons-comb" />
+            </div>
+            <div class="field">
+              <label for="cfg-init-odo">Počáteční stav tachometru k 31.12. (km)</label>
+              <input type="number" id="cfg-init-odo" />
+            </div>
+            <div class="field">
+              <label for="cfg-driver-name">Jméno a příjmení řidiče</label>
+              <input type="text" id="cfg-driver-name" />
+            </div>
+            <div class="field">
+              <label for="cfg-staff-no">Staff number (LPS########)</label>
+              <input type="text" id="cfg-staff-no" />
+            </div>
+            <div class="field">
+              <label for="cfg-department">Domácí department</label>
+              <input type="text" id="cfg-department" />
+            </div>
+            <div class="field">
+              <label for="cfg-template-path">Cesta k šabloně Excel</label>
+              <input type="text" id="cfg-template-path" />
+            </div>
+            <div class="field">
+              <label for="cfg-output-path">Výstupní soubor Excel</label>
+              <input type="text" id="cfg-output-path" />
+            </div>
+          </div>
+
+          <hr class="sep" />
+
+          <div class="gemini-settings-box">
+            <label for="cfg-gemini-key"><strong>Google Gemini API klíč</strong> (pro čtení PDF/JPG účtenek)</label>
+            <div class="form-row">
+              <input type="password" id="cfg-gemini-key" class="field-grow" placeholder="AIza..." />
+              <button type="button" class="btn btn-secondary" id="btn-toggle-key">👁️</button>
+              <button type="button" class="btn btn-secondary" id="btn-test-gemini">🧪 Otestovat klíč</button>
+            </div>
+            <div id="gemini-test-result" class="muted small"></div>
+          </div>
+        </div>
+
+        <!-- Tab 2: Business routes -->
+        <div id="tab-biz-routes" class="tab-pane">
+          <div class="catalog-toolbar">
+            <p class="muted">Předdefinované služební cesty pro rychlý výběr při přípravě knihy jízd.</p>
+            <button type="button" class="btn btn-sm btn-secondary" id="btn-add-biz-catalog">+ Přidat služební trasu</button>
+          </div>
+          <div id="biz-catalog-list" class="catalog-list"></div>
+        </div>
+
+        <!-- Tab 3: Private routes -->
+        <div id="tab-priv-routes" class="tab-pane">
+          <div class="catalog-toolbar">
+            <p class="muted">Soukromé trasy a rozsahy kilometrů, podle kterých aplikace odhaduje cesty ze Škoda CSV.</p>
+            <button type="button" class="btn btn-sm btn-secondary" id="btn-add-priv-catalog">+ Přidat soukromou trasu</button>
+          </div>
+          <div id="priv-catalog-list" class="catalog-list"></div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-close-modal="settings-modal">Zavřít</button>
+        <button type="button" class="btn btn-primary" id="btn-save-settings">💾 Uložit nastavení</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Two-Column Receipt Viewer & Manual Editor Modal -->
+  <div id="receipt-editor-modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-backdrop" data-close-modal="receipt-editor-modal"></div>
+    <div class="modal-panel modal-xl">
+      <div class="modal-header">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <h2 id="rec-ed-title">Účtenka</h2>
+          <span id="rec-ed-status-badge" class="badge badge-neutral"></span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <a id="rec-ed-open-tab" href="#" target="_blank" rel="noopener" class="btn btn-sm btn-secondary">↗ Otevřít v novém okně</a>
+          <button type="button" class="icon-btn" data-close-modal="receipt-editor-modal">✕</button>
+        </div>
+      </div>
+
+      <div class="receipt-editor-split">
+        <!-- Left: Inline PDF / Image Viewer -->
+        <div class="receipt-viewer-pane" id="rec-ed-viewer"></div>
+
+        <!-- Right: Manual Entry / Correction Form -->
+        <div class="receipt-form-pane">
+          <div id="rec-ed-error-box" class="alert alert-warning hidden"></div>
+
+          <div class="form-row">
+            <div class="field">
+              <label for="rec-ed-month">Přiřadit do měsíce</label>
+              <select id="rec-ed-month"></select>
+            </div>
+            <div class="field">
+              <label for="rec-ed-date">Datum účtenky</label>
+              <input type="text" id="rec-ed-date" placeholder="YYYY-MM-DD" />
+            </div>
+            <div class="field field-grow">
+              <label for="rec-ed-merchant">Čerpací stanice / Obchodník</label>
+              <input type="text" id="rec-ed-merchant" placeholder="např. GO tank, ČEPRO, MOL" />
+            </div>
+          </div>
+
+          <div class="form-row" style="margin-top: 10px;">
+            <div class="field" style="width: 100px;">
+              <label for="rec-ed-currency">Měna</label>
+              <select id="rec-ed-currency">
+                <option value="CZK">CZK</option>
+                <option value="EUR">EUR</option>
+                <option value="PLN">PLN</option>
+                <option value="HUF">HUF</option>
+              </select>
+            </div>
+            <div class="field" style="width: 120px;">
+              <label for="rec-ed-rate">Kurz ČNB</label>
+              <input type="number" step="0.001" id="rec-ed-rate" value="1" />
+            </div>
+            <div class="field">
+              <button type="button" class="btn btn-sm btn-secondary" id="rec-ed-fetch-rate">🔄 Kurz ČNB</button>
+            </div>
+          </div>
+
+          <hr class="sep" />
+
+          <div class="subcard-header">
+            <h3>⛽ Tankování PHM</h3>
+            <button type="button" class="btn btn-sm btn-secondary" id="rec-ed-add-fuel">+ Přidat PHM</button>
+          </div>
+          <div id="rec-ed-fuel-list" class="editor-items-list"></div>
+
+          <hr class="sep" />
+
+          <div class="subcard-header">
+            <h3>🧼 Ostatní výdaje (myčka, ostřikovače, AdBlue)</h3>
+            <button type="button" class="btn btn-sm btn-secondary" id="rec-ed-add-other">+ Přidat výdaj</button>
+          </div>
+          <div id="rec-ed-other-list" class="editor-items-list"></div>
+        </div>
+      </div>
+
+      <div class="modal-footer" style="justify-content: space-between;">
+        <button type="button" class="btn btn-secondary" id="rec-ed-retry-ai">🤖 Zkusit vytěžit přes AI</button>
+        <div style="display:flex;gap:10px;">
+          <button type="button" class="btn btn-secondary" data-close-modal="receipt-editor-modal">Zavřít</button>
+          <button type="button" class="btn btn-primary" id="rec-ed-save-manual">💾 Uložit a označit jako zpracované ručně</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
